@@ -3,11 +3,14 @@
 
   const TAG = "com-umut-kpicard";
 
+  // No fake sample text/numbers here on purpose — an unconfigured widget
+  // should render as an obviously-empty card, not a placeholder that looks
+  // like real data. Only visual/styling defaults get real values.
   const DEFAULTS = {
-    title: "GESAMTKUNDEN",
+    title: "",
     titleColor: "#8B95A1",
-    subtitle: "Business Partner in der Analyse",
-    value: "9.338",
+    subtitle: "",
+    value: "",
     valueColor: "#FFFFFF",
     badgeText: "",
     badgeColor: "#E8985E",
@@ -157,32 +160,83 @@
       const rest = Object.assign({}, changedProps);
       delete rest.myDataBinding;
       this._props = Object.assign({}, this._props, rest);
-      if (changedProps && changedProps.myDataBinding) {
-        this._applyDataBinding(changedProps.myDataBinding);
-      }
+      // Always re-read the data binding here, regardless of whether it shows
+      // up as a key in changedProps: per the lifecycle order, any property
+      // setter (including SAC's own for the data binding) runs before this
+      // hook, so `this.myDataBinding` is guaranteed current by now. Relying
+      // only on changedProps or only on our own setter firing turned out to
+      // be fragile across SAC versions.
+      this._applyDataBinding(this.myDataBinding);
       this._render();
     }
 
     // Reads the bound measure's value out of the data binding payload and
-    // uses it as the card's "value" text, overriding the static default.
-    // Per the official SAC Custom Widget Developer Guide, the payload shape
-    // is simply { data: [...], metadata: {...} } — no "state" field — so we
-    // just check that we actually got rows back.
+    // uses it as the card's "value" text — this always wins over the manual
+    // "value" property once a measure is bound. Also auto-fills the title
+    // from the measure's own display name when the user hasn't typed one.
+    // Payload shape per the official SAC Custom Widget Developer Guide:
+    // { data: [ { measures_0: {raw, formatted, unit}, dimensions_0: {...} } ],
+    //   metadata: { mainStructureMembers: { measures_0: {id, label} }, ... } }
     _applyDataBinding(dataBinding) {
       if (!dataBinding) {
         return;
       }
       const rows = Array.isArray(dataBinding.data) ? dataBinding.data : [];
-      const cell = rows[0] && rows[0].measures_0;
-      if (!cell) {
+      if (!rows.length) {
         return;
       }
-      if (typeof cell.formatted === "string" && cell.formatted.length) {
-        this._props.value = cell.formatted;
-        return;
+
+      const findMeasureKey = (row) => {
+        for (const key in row) {
+          if (Object.prototype.hasOwnProperty.call(row, key) && key.indexOf("measures_") === 0) {
+            return key;
+          }
+        }
+        return null;
+      };
+
+      const firstKey = findMeasureKey(rows[0]);
+      if (firstKey) {
+        if (rows.length === 1) {
+          // Single row (no dimension bound, or one member selected): show
+          // the model's own formatted string when available.
+          const cell = rows[0][firstKey];
+          if (cell && typeof cell.formatted === "string" && cell.formatted.length) {
+            this._props.value = cell.formatted;
+          } else if (cell && typeof cell.raw === "number") {
+            this._props.value = cell.raw.toLocaleString("de-DE");
+          }
+        } else {
+          // Multiple rows (a dimension is bound and returned several
+          // members): sum the raw values into one total for the card.
+          let sum = 0;
+          let any = false;
+          rows.forEach((row) => {
+            const key = findMeasureKey(row);
+            const cell = key && row[key];
+            if (cell && typeof cell.raw === "number") {
+              sum += cell.raw;
+              any = true;
+            }
+          });
+          if (any) {
+            this._props.value = sum.toLocaleString("de-DE");
+          }
+        }
       }
-      const num = Number(cell.raw);
-      this._props.value = Number.isFinite(num) ? num.toLocaleString("de-DE") : String(cell.raw);
+
+      // Auto-title from the bound measure's own name, only if the user
+      // hasn't already typed a title in the Builder Panel.
+      if (!this._props.title) {
+        const members = dataBinding.metadata && dataBinding.metadata.mainStructureMembers;
+        if (members) {
+          const memberKey = Object.keys(members)[0];
+          const label = memberKey && members[memberKey] && members[memberKey].label;
+          if (label) {
+            this._props.title = label;
+          }
+        }
+      }
     }
 
     onCustomWidgetResize() {
