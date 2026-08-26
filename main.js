@@ -123,6 +123,7 @@
   class KpiCard extends HTMLElement {
     constructor() {
       super();
+      console.log("[KpiCard] constructor — build with data-binding debug logging v1.0.3");
       this._shadowRoot = this.attachShadow({ mode: "open" });
       this._shadowRoot.appendChild(template.content.cloneNode(true));
 
@@ -157,6 +158,12 @@
     }
 
     onCustomWidgetAfterUpdate(changedProps) {
+      // TEMPORARY diagnostic logging — open the browser console (F12) after
+      // binding a measure to see exactly what SAC sends us. Remove once the
+      // data binding is confirmed working.
+      console.log("[KpiCard] onCustomWidgetAfterUpdate changedProps=", changedProps);
+      console.log("[KpiCard] this.myDataBinding=", this.myDataBinding);
+
       const rest = Object.assign({}, changedProps);
       delete rest.myDataBinding;
       this._props = Object.assign({}, this._props, rest);
@@ -178,10 +185,12 @@
     // { data: [ { measures_0: {raw, formatted, unit}, dimensions_0: {...} } ],
     //   metadata: { mainStructureMembers: { measures_0: {id, label} }, ... } }
     _applyDataBinding(dataBinding) {
+      console.log("[KpiCard] _applyDataBinding called with", dataBinding);
       if (!dataBinding) {
         return;
       }
       const rows = Array.isArray(dataBinding.data) ? dataBinding.data : [];
+      console.log("[KpiCard] rows=", rows);
       if (!rows.length) {
         return;
       }
@@ -308,6 +317,7 @@
       return this._dataBinding;
     },
     set(v) {
+      console.log("[KpiCard] myDataBinding setter called with", v);
       this._dataBinding = v;
       this._applyDataBinding(v);
       this._render();
