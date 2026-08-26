@@ -144,13 +144,44 @@
     // Some SAC runtime versions assign properties directly (see setters
     // below); others push a changed-properties map through this hook.
     // Handling both keeps the widget working across versions.
+    // "myDataBinding" arrives here too (when a measure is bound in the
+    // Builder Panel) but has its own {state, data, metadata} shape, so it's
+    // pulled out and handled separately from the flat properties.
     onCustomWidgetBeforeUpdate(changedProps) {
-      this._props = Object.assign({}, this._props, changedProps);
+      const rest = Object.assign({}, changedProps);
+      delete rest.myDataBinding;
+      this._props = Object.assign({}, this._props, rest);
     }
 
     onCustomWidgetAfterUpdate(changedProps) {
-      this._props = Object.assign({}, this._props, changedProps);
+      const rest = Object.assign({}, changedProps);
+      delete rest.myDataBinding;
+      this._props = Object.assign({}, this._props, rest);
+      if (changedProps && changedProps.myDataBinding) {
+        this._applyDataBinding(changedProps.myDataBinding);
+      }
       this._render();
+    }
+
+    // Reads the bound measure's value out of the data binding payload and
+    // uses it as the card's "value" text, overriding the static default.
+    // Prefers the model's own formatted string (locale/scale aware, e.g.
+    // "9.338" or "147,37 K") and falls back to formatting the raw number.
+    _applyDataBinding(dataBinding) {
+      if (!dataBinding || dataBinding.state !== "success") {
+        return;
+      }
+      const rows = Array.isArray(dataBinding.data) ? dataBinding.data : [];
+      const cell = rows[0] && rows[0].measures_0;
+      if (!cell) {
+        return;
+      }
+      if (typeof cell.formatted === "string" && cell.formatted.length) {
+        this._props.value = cell.formatted;
+        return;
+      }
+      const num = Number(cell.raw);
+      this._props.value = Number.isFinite(num) ? num.toLocaleString("de-DE") : String(cell.raw);
     }
 
     onCustomWidgetResize() {
@@ -212,6 +243,22 @@
       configurable: true,
       enumerable: true
     });
+  });
+
+  // Some SAC versions assign the data binding directly as a property
+  // instead of (or in addition to) routing it through
+  // onCustomWidgetAfterUpdate — cover both paths.
+  Object.defineProperty(KpiCard.prototype, "myDataBinding", {
+    get() {
+      return this._dataBinding;
+    },
+    set(v) {
+      this._dataBinding = v;
+      this._applyDataBinding(v);
+      this._render();
+    },
+    configurable: true,
+    enumerable: true
   });
 
   if (!customElements.get(TAG)) {
