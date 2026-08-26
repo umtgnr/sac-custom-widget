@@ -145,7 +145,7 @@
     // below); others push a changed-properties map through this hook.
     // Handling both keeps the widget working across versions.
     // "myDataBinding" arrives here too (when a measure is bound in the
-    // Builder Panel) but has its own {state, data, metadata} shape, so it's
+    // Builder Panel) but has its own {data, metadata} shape, so it's
     // pulled out and handled separately from the flat properties.
     onCustomWidgetBeforeUpdate(changedProps) {
       const rest = Object.assign({}, changedProps);
@@ -165,10 +165,11 @@
 
     // Reads the bound measure's value out of the data binding payload and
     // uses it as the card's "value" text, overriding the static default.
-    // Prefers the model's own formatted string (locale/scale aware, e.g.
-    // "9.338" or "147,37 K") and falls back to formatting the raw number.
+    // Per the official SAC Custom Widget Developer Guide, the payload shape
+    // is simply { data: [...], metadata: {...} } — no "state" field — so we
+    // just check that we actually got rows back.
     _applyDataBinding(dataBinding) {
-      if (!dataBinding || dataBinding.state !== "success") {
+      if (!dataBinding) {
         return;
       }
       const rows = Array.isArray(dataBinding.data) ? dataBinding.data : [];
