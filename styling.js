@@ -1,333 +1,139 @@
 (function () {
   "use strict";
 
-  const TAG = "com-umut-kpicard";
+  const TAG = "com-umut-kpicard-styling";
 
-  // No fake sample text/numbers here on purpose — an unconfigured widget
-  // should render as an obviously-empty card, not a placeholder that looks
-  // like real data. Only visual/styling defaults get real values.
-  const DEFAULTS = {
-    title: "",
-    titleColor: "#667085",
-    subtitle: "",
-    value: "",
-    valueColor: "#1A1A1A",
-    badgeText: "",
-    badgeColor: "#E8985E",
-    accentColor: "#4A90D9",
-    accentColorEnd: "",
-    backgroundColor: "#FFFFFF",
-    cornerRadius: 16
-  };
-
-  // Numbers under 100'000 are shown exactly as-is (e.g. "9.338", "842"),
-  // matching plain "count" style KPI tiles. Larger numbers are abbreviated
-  // with a small unit suffix (k / Mio. / Mrd.) so they always fit the card,
-  // the same way native SAC Numeric Point tiles show "147,37" + "k".
-  function formatMeasureValue(raw) {
-    if (typeof raw !== "number" || !Number.isFinite(raw)) {
-      return { text: String(raw), unit: "" };
-    }
-    const abs = Math.abs(raw);
-    if (abs < 100000) {
-      return {
-        text: raw.toLocaleString("de-DE", { maximumFractionDigits: 0 }),
-        unit: ""
-      };
-    }
-    let divisor = 1e3;
-    let unit = "k";
-    if (abs >= 1e9) {
-      divisor = 1e9;
-      unit = "Mrd.";
-    } else if (abs >= 1e6) {
-      divisor = 1e6;
-      unit = "Mio.";
-    }
-    return {
-      text: (raw / divisor).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      unit: unit
-    };
-  }
+  // Same property list/order as widget.json's "properties" object.
+  const FIELDS = [
+    { key: "title", label: "Title (leave empty to use the measure's name)", type: "text" },
+    { key: "subtitle", label: "Subtitle", type: "text" },
+    { key: "value", label: "Manual value (only used if no measure is bound)", type: "text" },
+    { key: "badgeText", label: "Badge text (leave empty to hide the badge)", type: "text" },
+    { key: "cornerRadius", label: "Corner radius (px)", type: "number" },
+    { key: "titleColor", label: "Title color", type: "color" },
+    { key: "valueColor", label: "Value color", type: "color" },
+    { key: "badgeColor", label: "Badge color", type: "color" },
+    { key: "accentColor", label: "Accent color (start)", type: "color" },
+    { key: "accentColorEnd", label: "Accent color (end, optional, hex or empty)", type: "text" },
+    { key: "backgroundColor", label: "Background color", type: "color" }
+  ];
 
   const template = document.createElement("template");
   template.innerHTML = `
     <style>
       :host {
         display: block;
-        width: 100%;
-        height: 100%;
         box-sizing: border-box;
+        padding: 14px 16px;
         font-family: "72", "Segoe UI", Arial, sans-serif;
+        font-size: 12px;
+        color: #222;
       }
-      .card {
-        position: relative;
-        box-sizing: border-box;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #FFFFFF;
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 16px;
-        padding: 18px 20px 20px 20px;
+      form {
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        gap: 6px;
+        gap: 12px;
       }
-      .accent {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: #4A90D9;
-      }
-      .title {
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: #667085;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .subtitle {
-        font-size: 12px;
-        color: #6B7280;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .value {
-        font-size: 34px;
-        font-weight: 700;
-        color: #1A1A1A;
-        line-height: 1.15;
-        margin-top: 2px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .value-unit {
-        font-size: 15px;
+      .field label {
+        display: block;
         font-weight: 600;
-        color: #8B95A1;
-        margin-left: 4px;
+        margin-bottom: 4px;
       }
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 8px;
-        padding: 4px 10px;
-        width: fit-content;
-        max-width: 100%;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.05);
-        font-size: 11px;
-        font-weight: 600;
-        color: #E8985E;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+      .field input[type="text"],
+      .field input[type="number"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 7px;
+        border: 1px solid #c7cdd3;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: inherit;
       }
-      .dot {
-        flex: 0 0 auto;
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: currentColor;
-      }
-      .badge[hidden] {
-        display: none;
+      .field input[type="color"] {
+        width: 52px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid #c7cdd3;
+        border-radius: 4px;
+        cursor: pointer;
+        background: none;
       }
     </style>
-    <div class="card" part="card">
-      <div class="accent" part="accent"></div>
-      <div class="title" part="title"></div>
-      <div class="subtitle" part="subtitle"></div>
-      <div class="value" part="value"><span class="value-number"></span><span class="value-unit"></span></div>
-      <div class="badge" part="badge" hidden>
-        <span class="dot"></span>
-        <span class="badge-text"></span>
-      </div>
-    </div>
+    <form id="form">
+      ${FIELDS.map(
+        (f) => `
+        <div class="field">
+          <label for="${f.key}">${f.label}</label>
+          <input id="${f.key}" type="${f.type}"${f.type === "number" ? ' min="0" max="40"' : ""}>
+        </div>
+      `
+      ).join("")}
+      <input type="submit" style="display:none;">
+    </form>
   `;
 
-  class KpiCard extends HTMLElement {
+  class KpiCardStyling extends HTMLElement {
     constructor() {
       super();
       this._shadowRoot = this.attachShadow({ mode: "open" });
       this._shadowRoot.appendChild(template.content.cloneNode(true));
 
-      this._props = Object.assign({}, DEFAULTS, { valueUnit: "" });
+      this._inputs = {};
+      FIELDS.forEach((f) => {
+        const el = this._shadowRoot.getElementById(f.key);
+        this._inputs[f.key] = el;
+        // Live-update as the user types/picks a color — no need to press Enter.
+        el.addEventListener("input", () => this._emit());
+        el.addEventListener("change", () => this._emit());
+      });
 
-      this._els = {
-        card: this._shadowRoot.querySelector(".card"),
-        accent: this._shadowRoot.querySelector(".accent"),
-        title: this._shadowRoot.querySelector(".title"),
-        subtitle: this._shadowRoot.querySelector(".subtitle"),
-        valueNumber: this._shadowRoot.querySelector(".value-number"),
-        valueUnit: this._shadowRoot.querySelector(".value-unit"),
-        badge: this._shadowRoot.querySelector(".badge"),
-        badgeText: this._shadowRoot.querySelector(".badge-text")
-      };
+      this._shadowRoot.getElementById("form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        this._emit();
+      });
     }
 
-    connectedCallback() {
-      this._render();
-    }
-
-    onCustomWidgetBeforeUpdate(changedProps) {
-      const rest = Object.assign({}, changedProps);
-      delete rest.myDataBinding;
-      this._props = Object.assign({}, this._props, rest);
-    }
-
+    // The Styling Panel gets the same lifecycle calls as the main widget
+    // (minus onCustomWidgetResize), so this is how SAC hands us the
+    // widget's CURRENT property values to pre-fill the form fields.
     onCustomWidgetAfterUpdate(changedProps) {
-      const rest = Object.assign({}, changedProps);
-      delete rest.myDataBinding;
-      this._props = Object.assign({}, this._props, rest);
-      this._applyDataBinding(this.myDataBinding);
-      this._render();
+      Object.keys(changedProps).forEach((key) => {
+        const el = this._inputs[key];
+        if (!el) {
+          return;
+        }
+        const value = changedProps[key];
+        if (document.activeElement === el) {
+          // Don't fight the user while they're actively editing this field.
+          return;
+        }
+        el.value = value === undefined || value === null ? "" : value;
+      });
     }
 
-    _applyDataBinding(dataBinding) {
-      if (!dataBinding) {
-        return;
-      }
-      const rows = Array.isArray(dataBinding.data) ? dataBinding.data : [];
-      if (!rows.length) {
-        return;
-      }
-
-      const findMeasureKey = (row) => {
-        for (const key in row) {
-          if (Object.prototype.hasOwnProperty.call(row, key) && key.indexOf("measures_") === 0) {
-            return key;
-          }
+    _emit() {
+      const properties = {};
+      FIELDS.forEach((f) => {
+        const el = this._inputs[f.key];
+        if (!el) {
+          return;
         }
-        return null;
-      };
-
-      const firstKey = findMeasureKey(rows[0]);
-      if (firstKey) {
-        if (rows.length === 1) {
-          const cell = rows[0][firstKey];
-          if (cell && typeof cell.raw === "number") {
-            const formatted = formatMeasureValue(cell.raw);
-            this._props.value = formatted.text;
-            this._props.valueUnit = formatted.unit;
-          } else if (cell && typeof cell.formatted === "string" && cell.formatted.length) {
-            this._props.value = cell.formatted;
-            this._props.valueUnit = "";
-          }
+        if (f.type === "number") {
+          const n = parseInt(el.value, 10);
+          properties[f.key] = Number.isFinite(n) ? n : 0;
         } else {
-          let sum = 0;
-          let any = false;
-          rows.forEach((row) => {
-            const key = findMeasureKey(row);
-            const cell = key && row[key];
-            if (cell && typeof cell.raw === "number") {
-              sum += cell.raw;
-              any = true;
-            }
-          });
-          if (any) {
-            const formatted = formatMeasureValue(sum);
-            this._props.value = formatted.text;
-            this._props.valueUnit = formatted.unit;
-          }
+          properties[f.key] = el.value;
         }
-      }
-
-      if (!this._props.title) {
-        const members = dataBinding.metadata && dataBinding.metadata.mainStructureMembers;
-        if (members) {
-          const memberKey = Object.keys(members)[0];
-          const label = memberKey && members[memberKey] && members[memberKey].label;
-          if (label) {
-            this._props.title = label;
-          }
-        }
-      }
-    }
-
-    onCustomWidgetResize() {
-      this._render();
-    }
-
-    onCustomWidgetDestroy() {
-      // nothing to clean up
-    }
-
-    static get observedProperties() {
-      return Object.keys(DEFAULTS);
-    }
-
-    _render() {
-      const p = this._props;
-      const radius = Number.isFinite(p.cornerRadius) ? p.cornerRadius : parseInt(p.cornerRadius, 10) || DEFAULTS.cornerRadius;
-
-      this._els.card.style.borderRadius = radius + "px";
-      this._els.card.style.background = p.backgroundColor || DEFAULTS.backgroundColor;
-
-      this._els.accent.style.borderTopLeftRadius = radius + "px";
-      this._els.accent.style.borderTopRightRadius = radius + "px";
-      const start = p.accentColor || DEFAULTS.accentColor;
-      const end = p.accentColorEnd;
-      this._els.accent.style.background = end ? `linear-gradient(90deg, ${start}, ${end})` : start;
-
-      this._els.title.textContent = p.title || "";
-      this._els.title.style.color = p.titleColor || DEFAULTS.titleColor;
-
-      this._els.subtitle.textContent = p.subtitle || "";
-      this._els.subtitle.hidden = !p.subtitle;
-
-      this._els.valueNumber.textContent = p.value || "";
-      this._els.valueNumber.style.color = p.valueColor || DEFAULTS.valueColor;
-      this._els.valueUnit.textContent = p.valueUnit || "";
-
-      if (p.badgeText) {
-        this._els.badge.hidden = false;
-        this._els.badgeText.textContent = p.badgeText;
-        this._els.badge.style.color = p.badgeColor || DEFAULTS.badgeColor;
-      } else {
-        this._els.badge.hidden = true;
-      }
+      });
+      this.dispatchEvent(
+        new CustomEvent("propertiesChanged", {
+          detail: { properties: properties }
+        })
+      );
     }
   }
 
-  DEFAULTS && Object.keys(DEFAULTS).forEach((name) => {
-    Object.defineProperty(KpiCard.prototype, name, {
-      get() {
-        return this._props[name];
-      },
-      set(v) {
-        this._props[name] = v === undefined || v === null ? DEFAULTS[name] : v;
-        this._render();
-      },
-      configurable: true,
-      enumerable: true
-    });
-  });
-
-  Object.defineProperty(KpiCard.prototype, "myDataBinding", {
-    get() {
-      return this._dataBinding;
-    },
-    set(v) {
-      this._dataBinding = v;
-      this._applyDataBinding(v);
-      this._render();
-    },
-    configurable: true,
-    enumerable: true
-  });
-
   if (!customElements.get(TAG)) {
-    customElements.define(TAG, KpiCard);
+    customElements.define(TAG, KpiCardStyling);
   }
 })();
