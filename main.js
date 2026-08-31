@@ -20,6 +20,36 @@
     cornerRadius: 16
   };
 
+  // Numbers under 100'000 are shown exactly as-is (e.g. "9.338", "842"),
+  // matching plain "count" style KPI tiles. Larger numbers are abbreviated
+  // with a small unit suffix (k / Mio. / Mrd.) so they always fit the card,
+  // the same way native SAC Numeric Point tiles show "147,37" + "k".
+  function formatMeasureValue(raw) {
+    if (typeof raw !== "number" || !Number.isFinite(raw)) {
+      return { text: String(raw), unit: "" };
+    }
+    const abs = Math.abs(raw);
+    if (abs < 100000) {
+      return {
+        text: raw.toLocaleString("de-DE", { maximumFractionDigits: 0 }),
+        unit: ""
+      };
+    }
+    let divisor = 1e3;
+    let unit = "k";
+    if (abs >= 1e9) {
+      divisor = 1e9;
+      unit = "Mrd.";
+    } else if (abs >= 1e6) {
+      divisor = 1e6;
+      unit = "Mio.";
+    }
+    return {
+      text: (raw / divisor).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      unit: unit
+    };
+  }
+
   const template = document.createElement("template");
   template.innerHTML = `
     <style>
@@ -80,6 +110,12 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .value-unit {
+        font-size: 15px;
+        font-weight: 600;
+        color: #8B95A1;
+        margin-left: 4px;
+      }
       .badge {
         display: inline-flex;
         align-items: center;
@@ -112,7 +148,7 @@
       <div class="accent" part="accent"></div>
       <div class="title" part="title"></div>
       <div class="subtitle" part="subtitle"></div>
-      <div class="value" part="value"></div>
+      <div class="value" part="value"><span class="value-number"></span><span class="value-unit"></span></div>
       <div class="badge" part="badge" hidden>
         <span class="dot"></span>
         <span class="badge-text"></span>
@@ -126,14 +162,15 @@
       this._shadowRoot = this.attachShadow({ mode: "open" });
       this._shadowRoot.appendChild(template.content.cloneNode(true));
 
-      this._props = Object.assign({}, DEFAULTS);
+      this._props = Object.assign({}, DEFAULTS, { valueUnit: "" });
 
       this._els = {
         card: this._shadowRoot.querySelector(".card"),
         accent: this._shadowRoot.querySelector(".accent"),
         title: this._shadowRoot.querySelector(".title"),
         subtitle: this._shadowRoot.querySelector(".subtitle"),
-        value: this._shadowRoot.querySelector(".value"),
+        valueNumber: this._shadowRoot.querySelector(".value-number"),
+        valueUnit: this._shadowRoot.querySelector(".value-unit"),
         badge: this._shadowRoot.querySelector(".badge"),
         badgeText: this._shadowRoot.querySelector(".badge-text")
       };
@@ -143,7 +180,6 @@
       this._render();
     }
 
-    // --- SAC lifecycle hooks -------------------------------------------
     onCustomWidgetBeforeUpdate(changedProps) {
       const rest = Object.assign({}, changedProps);
       delete rest.myDataBinding;
@@ -158,10 +194,6 @@
       this._render();
     }
 
-    // Reads the bound measure's value out of the data binding payload and
-    // uses it as the card's "value" text — this always wins over the manual
-    // "value" property once a measure is bound. Also auto-fills the title
-    // from the measure's own display name when the user hasn't typed one.
     _applyDataBinding(dataBinding) {
       if (!dataBinding) {
         return;
@@ -184,10 +216,13 @@
       if (firstKey) {
         if (rows.length === 1) {
           const cell = rows[0][firstKey];
-          if (cell && typeof cell.formatted === "string" && cell.formatted.length) {
+          if (cell && typeof cell.raw === "number") {
+            const formatted = formatMeasureValue(cell.raw);
+            this._props.value = formatted.text;
+            this._props.valueUnit = formatted.unit;
+          } else if (cell && typeof cell.formatted === "string" && cell.formatted.length) {
             this._props.value = cell.formatted;
-          } else if (cell && typeof cell.raw === "number") {
-            this._props.value = cell.raw.toLocaleString("de-DE");
+            this._props.valueUnit = "";
           }
         } else {
           let sum = 0;
@@ -201,7 +236,9 @@
             }
           });
           if (any) {
-            this._props.value = sum.toLocaleString("de-DE");
+            const formatted = formatMeasureValue(sum);
+            this._props.value = formatted.text;
+            this._props.valueUnit = formatted.unit;
           }
         }
       }
@@ -249,8 +286,9 @@
       this._els.subtitle.textContent = p.subtitle || "";
       this._els.subtitle.hidden = !p.subtitle;
 
-      this._els.value.textContent = p.value || "";
-      this._els.value.style.color = p.valueColor || DEFAULTS.valueColor;
+      this._els.valueNumber.textContent = p.value || "";
+      this._els.valueNumber.style.color = p.valueColor || DEFAULTS.valueColor;
+      this._els.valueUnit.textContent = p.valueUnit || "";
 
       if (p.badgeText) {
         this._els.badge.hidden = false;
@@ -262,8 +300,6 @@
     }
   }
 
-  // Define a getter/setter pair for every property so SAC can assign
-  // `widgetInstance.propertyName = value` directly from the Builder Panel.
   DEFAULTS && Object.keys(DEFAULTS).forEach((name) => {
     Object.defineProperty(KpiCard.prototype, name, {
       get() {
