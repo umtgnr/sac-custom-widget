@@ -8,15 +8,15 @@
   // like real data. Only visual/styling defaults get real values.
   const DEFAULTS = {
     title: "",
-    titleColor: "#8B95A1",
+    titleColor: "#667085",
     subtitle: "",
     value: "",
-    valueColor: "#FFFFFF",
+    valueColor: "#1A1A1A",
     badgeText: "",
     badgeColor: "#E8985E",
     accentColor: "#4A90D9",
     accentColorEnd: "",
-    backgroundColor: "#15181A",
+    backgroundColor: "#FFFFFF",
     cornerRadius: 16
   };
 
@@ -36,8 +36,8 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #15181A;
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: #FFFFFF;
+        border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 16px;
         padding: 18px 20px 20px 20px;
         display: flex;
@@ -58,7 +58,7 @@
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #8B95A1;
+        color: #667085;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -73,7 +73,7 @@
       .value {
         font-size: 34px;
         font-weight: 700;
-        color: #FFFFFF;
+        color: #1A1A1A;
         line-height: 1.15;
         margin-top: 2px;
         white-space: nowrap;
@@ -89,7 +89,7 @@
         width: fit-content;
         max-width: 100%;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.06);
+        background: rgba(0, 0, 0, 0.05);
         font-size: 11px;
         font-weight: 600;
         color: #E8985E;
@@ -123,7 +123,6 @@
   class KpiCard extends HTMLElement {
     constructor() {
       super();
-      console.log("[KpiCard] constructor — build with data-binding debug logging v1.0.3");
       this._shadowRoot = this.attachShadow({ mode: "open" });
       this._shadowRoot.appendChild(template.content.cloneNode(true));
 
@@ -145,12 +144,6 @@
     }
 
     // --- SAC lifecycle hooks -------------------------------------------
-    // Some SAC runtime versions assign properties directly (see setters
-    // below); others push a changed-properties map through this hook.
-    // Handling both keeps the widget working across versions.
-    // "myDataBinding" arrives here too (when a measure is bound in the
-    // Builder Panel) but has its own {data, metadata} shape, so it's
-    // pulled out and handled separately from the flat properties.
     onCustomWidgetBeforeUpdate(changedProps) {
       const rest = Object.assign({}, changedProps);
       delete rest.myDataBinding;
@@ -158,21 +151,9 @@
     }
 
     onCustomWidgetAfterUpdate(changedProps) {
-      // TEMPORARY diagnostic logging — open the browser console (F12) after
-      // binding a measure to see exactly what SAC sends us. Remove once the
-      // data binding is confirmed working.
-      console.log("[KpiCard] onCustomWidgetAfterUpdate changedProps=", changedProps);
-      console.log("[KpiCard] this.myDataBinding=", this.myDataBinding);
-
       const rest = Object.assign({}, changedProps);
       delete rest.myDataBinding;
       this._props = Object.assign({}, this._props, rest);
-      // Always re-read the data binding here, regardless of whether it shows
-      // up as a key in changedProps: per the lifecycle order, any property
-      // setter (including SAC's own for the data binding) runs before this
-      // hook, so `this.myDataBinding` is guaranteed current by now. Relying
-      // only on changedProps or only on our own setter firing turned out to
-      // be fragile across SAC versions.
       this._applyDataBinding(this.myDataBinding);
       this._render();
     }
@@ -181,16 +162,11 @@
     // uses it as the card's "value" text — this always wins over the manual
     // "value" property once a measure is bound. Also auto-fills the title
     // from the measure's own display name when the user hasn't typed one.
-    // Payload shape per the official SAC Custom Widget Developer Guide:
-    // { data: [ { measures_0: {raw, formatted, unit}, dimensions_0: {...} } ],
-    //   metadata: { mainStructureMembers: { measures_0: {id, label} }, ... } }
     _applyDataBinding(dataBinding) {
-      console.log("[KpiCard] _applyDataBinding called with", dataBinding);
       if (!dataBinding) {
         return;
       }
       const rows = Array.isArray(dataBinding.data) ? dataBinding.data : [];
-      console.log("[KpiCard] rows=", rows);
       if (!rows.length) {
         return;
       }
@@ -207,8 +183,6 @@
       const firstKey = findMeasureKey(rows[0]);
       if (firstKey) {
         if (rows.length === 1) {
-          // Single row (no dimension bound, or one member selected): show
-          // the model's own formatted string when available.
           const cell = rows[0][firstKey];
           if (cell && typeof cell.formatted === "string" && cell.formatted.length) {
             this._props.value = cell.formatted;
@@ -216,8 +190,6 @@
             this._props.value = cell.raw.toLocaleString("de-DE");
           }
         } else {
-          // Multiple rows (a dimension is bound and returned several
-          // members): sum the raw values into one total for the card.
           let sum = 0;
           let any = false;
           rows.forEach((row) => {
@@ -234,8 +206,6 @@
         }
       }
 
-      // Auto-title from the bound measure's own name, only if the user
-      // hasn't already typed a title in the Builder Panel.
       if (!this._props.title) {
         const members = dataBinding.metadata && dataBinding.metadata.mainStructureMembers;
         if (members) {
@@ -256,7 +226,6 @@
       // nothing to clean up
     }
 
-    // --- Property accessors ---------------------------------------------
     static get observedProperties() {
       return Object.keys(DEFAULTS);
     }
@@ -309,15 +278,11 @@
     });
   });
 
-  // Some SAC versions assign the data binding directly as a property
-  // instead of (or in addition to) routing it through
-  // onCustomWidgetAfterUpdate — cover both paths.
   Object.defineProperty(KpiCard.prototype, "myDataBinding", {
     get() {
       return this._dataBinding;
     },
     set(v) {
-      console.log("[KpiCard] myDataBinding setter called with", v);
       this._dataBinding = v;
       this._applyDataBinding(v);
       this._render();
