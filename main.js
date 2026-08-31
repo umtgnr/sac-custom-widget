@@ -50,6 +50,29 @@
     };
   }
 
+  // Decide how to render one data-bound cell. SAC's own "formatted" string
+  // already carries special semantics we can't safely reconstruct from
+  // "raw" alone — percentages ("42,0%"), currencies, units, locale-specific
+  // decimal rules — so it's trusted whenever it's short enough to fit the
+  // card. Only when it's missing or too long (large unscaled numbers, e.g.
+  // amounts in the hundred-thousands) do we fall back to computing our own
+  // compact k / Mio. / Mrd. abbreviation from the raw number.
+  function formatCell(cell) {
+    if (!cell) {
+      return null;
+    }
+    if (typeof cell.formatted === "string" && cell.formatted.length && cell.formatted.length <= 12) {
+      return { text: cell.formatted, unit: "" };
+    }
+    if (typeof cell.raw === "number") {
+      return formatMeasureValue(cell.raw);
+    }
+    if (typeof cell.formatted === "string" && cell.formatted.length) {
+      return { text: cell.formatted, unit: "" };
+    }
+    return null;
+  }
+
   const template = document.createElement("template");
   template.innerHTML = `
     <style>
@@ -215,16 +238,16 @@
       const firstKey = findMeasureKey(rows[0]);
       if (firstKey) {
         if (rows.length === 1) {
+          // Single row (no dimension bound, or one member selected).
           const cell = rows[0][firstKey];
-          if (cell && typeof cell.raw === "number") {
-            const formatted = formatMeasureValue(cell.raw);
+          const formatted = formatCell(cell);
+          if (formatted) {
             this._props.value = formatted.text;
             this._props.valueUnit = formatted.unit;
-          } else if (cell && typeof cell.formatted === "string" && cell.formatted.length) {
-            this._props.value = cell.formatted;
-            this._props.valueUnit = "";
           }
         } else {
+          // Multiple rows (a dimension is bound and returned several
+          // members): sum the raw values into one total for the card.
           let sum = 0;
           let any = false;
           rows.forEach((row) => {
